@@ -79,7 +79,9 @@ server = {
         'port': int(e['PORT']), 'protocol': 'vless',
         'settings': {'clients': [{'id': e['UUID'], 'flow': 'xtls-rprx-vision'}], 'decryption': 'none'},
         'streamSettings': {'network': 'raw', 'security': 'reality', 'realitySettings': {
-            'show': False, 'target': e['SNI'] + ':443', 'serverNames': [e['SNI']],
+            # Mihomo sends REALITY client version 1.8.2 independently of its release version.
+            'show': False, 'minClientVer': '1.8.2',
+            'target': e['SNI'] + ':443', 'serverNames': [e['SNI']],
             'privateKey': e['PRIVATE_KEY'], 'shortIds': [e['SHORT_ID']]}}}],
     'outbounds': [{'protocol': 'freedom'}]}
 (p / 'config.json').write_text(json.dumps(server, indent=2) + '\n')
@@ -109,6 +111,7 @@ proxies:
     reality-opts:
       public-key: {q(e['PUBLIC_KEY'])}
       short-id: {q(e['SHORT_ID'])}
+      support-x25519mlkem768: true
 proxy-groups:
   - name: PROXY
     type: select

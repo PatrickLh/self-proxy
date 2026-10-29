@@ -220,4 +220,47 @@ Linux 上可使用 `nc -zv -w 3 你的服务器公网IP 443`。如果连接超�
 
 脚本只能为已运行的 UFW / firewalld 添加端口规则，**不会自动配置云安全组**。云安全组和服务器防火墙都必须放行实际监听端口。此方案不需要对公网开放客户端本地的 7890 端口，也不需要额外开放公网 UDP 443/8443。
 
+### Q3：端口可达，但 Clash 提示 `REALITY authentication failed` 怎么办？
+
+`nc` 成功只说明 TCP 端口可达，不代表 REALITY 握手成功。若 Clash 日志出现：
+
+```text
+connect error: REALITY authentication failed
+```
+
+同时 Xray 出现：
+
+```text
+REALITY: processed invalid connection ... authentication failed or validation criteria not met
+```
+
+先核对两端实际运行配置的公私钥对应关系、short ID、SNI、UUID、端口及系统时间。如果这些均正确，还需要检查 Mihomo 与新版 Xray 的 REALITY 握手兼容性。
+
+本项目实际排查中，**Xray 26.10.21 + Mihomo v1.19.32** 在服务端设置 `minClientVer` 后仍认证失败；保留该设置，并在客户端开启 `support-x25519mlkem768` 后连接成功。当前脚本会同时生成以下两项：
+
+- 服务端 `config.json`：在 `inbounds[].streamSettings.realitySettings` 下设置 `"minClientVer": "1.8.2"`。Mihomo v1.19.32 的 REALITY 握手版本标识为 `1.8.2`，与其发布版本号不同；此设置调整版本门槛，仍保留密钥和 short ID 校验。
+- 客户端 `client.yaml`：在 VPS 节点的 `reality-opts` 下设置 `support-x25519mlkem768: true`，启用 X25519-MLKEM768 密钥交换，并保留 `client-fingerprint: chrome`。
+
+已有安装无需重新运行脚本，手动补充上述字段即可。客户端配置位置示例（保留自己的公钥和 short ID）：
+
+```yaml
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: "原有公钥"
+      short-id: "原有 short ID"
+      support-x25519mlkem768: true
+```
+
+服务端修改前先备份，增加 `minClientVer` 后使用第 4 节的 `run -test` 命令校验；通过后执行 `sudo docker stop xray-reality`，再执行 `sudo docker start xray-reality`，确保重新挂载配置。客户端保存后重新加载配置并重启内核，确认 PROXY 选择 VPS，再测试：
+
+```bash
+curl -v --max-time 15 \
+  --proxy http://127.0.0.1:7890 \
+  https://1.1.1.1/cdn-cgi/trace
+```
+
+返回 `ip=` 且为 VPS 出口说明该次代理请求成功。若仍失败，将 Clash 的日志等级临时设为 Debug，查看同一次请求的客户端和服务端日志；排查结束后恢复常规日志等级。这是上述版本组合的实际解决记录，不保证涵盖所有 REALITY 认证失败原因。
+
+相关依据：[Mihomo v1.19.32 REALITY 实现](https://github.com/MetaCubeX/mihomo/blob/v1.19.32/component/tls/reality.go)、[Mihomo TLS / REALITY 配置说明](https://wiki.metacubex.one/config/proxies/tls/)、[客户端版本兼容问题记录](https://github.com/MetaCubeX/mihomo/issues/3039)。
+
 参考：[Xray REALITY 文档](https://xtls.github.io/en/config/transports/reality.html)、[Mihomo TUN 文档](https://wiki.metacubex.one/config/inbound/tun/)、[Mihomo 规则集文档](https://wiki.metacubex.one/config/rule-providers/)。
