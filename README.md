@@ -152,4 +152,54 @@ sudo rm -rf /etc/xray-reality
 
 如已将临时 `client.yaml` 复制到 SSH 用户目录，用完后删除该临时副本。卸载不会移除 Docker、镜像或防火墙规则；根据需要单独清理。更新 Xray 前备份配置并在新版本上校验，不要为升级直接重跑首次安装脚本。
 
+## 6. 常见问题（QA）
+
+### Q1：本机无法连接服务器的 443 端口怎么办？
+
+在本机 macOS 终端测试 TCP 连通性（将示例 IP 替换成自己的服务器公网 IP）：
+
+```bash
+nc -zv -G 3 192.220.37.170 443
+```
+
+Linux 上可使用 `nc -zv -w 3 你的服务器公网IP 443`。如果连接超时或被拒绝，先确认服务器上的 `xray-reality` 正常运行、443 正在监听，并检查云安全组和服务器防火墙。单次连接失败不能直接认定是运营商拦截；本地电信等运营商线路也可能存在端口过滤，可换手机热点等网络交叉测试。
+
+确认放行且服务正常后，若当前线路仍无法连接 443，可尝试改为 8443 等未占用端口。首次安装时直接使用第 2 节的 `--port 8443` 参数；已经安装的实例按以下步骤修改，不要重新运行首次安装脚本：
+
+1. 在云安全组和已启用的服务器防火墙中放行入站 TCP 8443，确认该端口没有被其他服务占用。
+2. 在服务器上备份并编辑服务端配置：
+
+   ```bash
+   sudo cp -p /etc/xray-reality/config.json /etc/xray-reality/config.json.bak
+   sudo nano /etc/xray-reality/config.json
+   ```
+
+   将 `inbounds` 中对应 VLESS 入站的 `port` 从 `443` 改为 `8443`。保留 `realitySettings.target` 中目标网站的 `:443`，它是伪装目标端口。
+
+3. 使用第 4 节的 `run -test` 命令校验配置；通过后重启并确认新端口监听：
+
+   ```bash
+   sudo docker restart xray-reality
+   sudo docker logs --tail 50 xray-reality
+   sudo ss -ltnp 'sport = :8443'
+   ```
+
+   当前容器使用 `--network host`，监听端口由 Xray 配置决定，无需修改 Docker 的 `-p` 映射。编辑时保留原配置文件路径；如果编辑器保存时替换了文件，导致容器仍读取旧配置，应先停止容器再启动以重新挂载文件：`sudo docker stop xray-reality`，然后执行 `sudo docker start xray-reality`。
+
+4. 将本机 Mihomo 配置中 `proxies` 下 VPS 节点的 `port` 同步改为 `8443`，保存并重新加载配置。服务器保存的 `/etc/xray-reality/client.yaml` 也应同步修改，方便后续下载；本机的 `mixed-port: 7890` 保持不变。
+5. 在本机执行 `nc -zv -G 3 你的服务器公网IP 8443`，连通后再按第 4 节测试代理。确认新端口可用后，可以移除旧的 443 放行规则（若没有其他服务使用它）。TCP 连通只说明端口可达，还需验证 REALITY 握手及实际代理访问。
+
+### Q2：服务器购买后，安全组需要开放哪些端口？
+
+在云服务商控制台找到绑定到该服务器的安全组或云防火墙，添加允许入站的规则：
+
+| 用途 | 协议 | 目标端口 | 来源 |
+| --- | --- | --- | --- |
+| SSH 管理 | TCP | 实际 SSH 端口，通常为 22 | 自己的管理公网 IP 或网段 |
+| Xray 代理 | TCP | 默认 443，改端口后如 8443 | 需要连接代理的客户端公网 IP 或网段 |
+
+若客户端公网 IP 经常变化，需相应更新来源范围；需要任意 IPv4 客户端连接时可设为 `0.0.0.0/0`。使用 IPv6 时还要配置对应的 IPv6 来源规则。注意不要在修改规则时移除当前 SSH 登录所需的权限。
+
+脚本只能为已运行的 UFW / firewalld 添加端口规则，**不会自动配置云安全组**。云安全组和服务器防火墙都必须放行实际监听端口。此方案不需要对公网开放客户端本地的 7890 端口，也不需要额外开放公网 UDP 443/8443。
+
 参考：[Xray REALITY 文档](https://xtls.github.io/en/config/transports/reality.html)、[Mihomo TUN 文档](https://wiki.metacubex.one/config/inbound/tun/)、[Mihomo 规则集文档](https://wiki.metacubex.one/config/rule-providers/)。
