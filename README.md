@@ -91,7 +91,25 @@ scp user@你的服务器公网IP:~/client.yaml ./client.yaml
 - `.cn` 及列出的百度、腾讯、淘宝、天猫、支付宝、京东、哔哩哔哩域名直连。
 - **其余全部走 PROXY**，包括 GitHub 和 Docker 等服务。此配置不是覆盖所有国内网站的地理分流，未列出的国内网站也会消耗 VPS 流量。需要其他直连域名时，在 `MATCH,PROXY` 之前追加 `DOMAIN-SUFFIX,域名,DIRECT`。
 
-DNS 使用 fake-ip，解析主要通过节点访问 Cloudflare/Google DoH。`default-nameserver` 是国内引导解析器，不表示所有 DNS 都绝对不会直连。顶层 `ipv6: false` 关闭 Mihomo 的相应 IPv6 行为，不等于关闭操作系统 IPv6；有严格 IPv6 隐私需求时，应另行检查系统网络配置和实际出口。
+DNS 使用 fake-ip。`dns.direct-nameserver` 为直连出口解析域名，使用 `223.5.5.5#DIRECT` 和 `119.29.29.29#DIRECT`，使直连网站的解析不依赖 VPS。默认 `dns.nameserver` 使用带 `#PROXY` 的 Cloudflare/Google DoH，通过 VPS 查询。`default-nameserver` 用于解析 DNS 服务器自身的域名，不是直连网站的通用备用 DNS。当前无需额外配置 `nameserver-policy`；需要为特定域名指定解析器时再添加。
+
+要追加国内网站直连，在客户端 YAML 的 `rules:` 中、末尾 `MATCH,PROXY` **之前**添加规则，例如：
+
+```yaml
+  - DOMAIN-SUFFIX,douban.com,DIRECT
+  - DOMAIN-SUFFIX,zhihu.com,DIRECT
+  - MATCH,PROXY
+```
+
+`DOMAIN-SUFFIX` 同时匹配域名本身及其子域名。保存并在 Clash Verge Rev 中重新加载配置，保持 Rule 模式；这些网站的连接走 DIRECT，直连出口的域名解析使用 `direct-nameserver`，不经过 VPS。网站若依赖其他资源域名，需要按连接面板的实际记录补充规则。脚本更新只影响后续生成的配置；已安装用户需在现有 `client.yaml` 的 `dns:` 下补充：
+
+```yaml
+  direct-nameserver:
+    - '223.5.5.5#DIRECT'
+    - '119.29.29.29#DIRECT'
+```
+
+无需为此重新运行安装脚本。顶层 `ipv6: false` 关闭 Mihomo 的相应 IPv6 行为，不等于关闭操作系统 IPv6；有严格 IPv6 隐私需求时，应另行检查系统网络配置和实际出口。
 
 ## 4. 验证是否正常工作
 

@@ -123,6 +123,10 @@ dns:
     - '*.local'
     - 'localhost'
   default-nameserver: [223.5.5.5, 119.29.29.29]
+  # Resolve DIRECT outbound domains without depending on the VPS.
+  direct-nameserver:
+    - '223.5.5.5#DIRECT'
+    - '119.29.29.29#DIRECT'
   nameserver:
     - 'https://1.1.1.1/dns-query#PROXY'
     - 'https://8.8.8.8/dns-query#PROXY'
