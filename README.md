@@ -111,6 +111,25 @@ DNS 使用 fake-ip。`dns.direct-nameserver` 为直连出口解析域名，使�
 
 无需为此重新运行安装脚本。顶层 `ipv6: false` 关闭 Mihomo 的相应 IPv6 行为，不等于关闭操作系统 IPv6；有严格 IPv6 隐私需求时，应另行检查系统网络配置和实际出口。
 
+### iPhone / Shadowrocket（小火箭）导入
+
+在本机以下载的 `client.yaml` 为输入，生成 VLESS 分享链接和二维码，无需重新部署服务器：
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r requirements-shadowrocket.txt
+python3 export-shadowrocket.py client.yaml --qr shadowrocket.png
+```
+
+输出 `shadowrocket.txt`（一条 `vless://` 链接）和 `shadowrocket.png`（同一链接的二维码），默认权限为 600。脚本不会覆盖已有文件；重新生成前移走旧输出或使用 `--output` / `--qr` 指定新路径。只需要链接时省略 `--qr`。有多个 VLESS 节点时，添加 `--name VPS` 选择节点。
+
+在电脑上打开二维码，用 iPhone 上小火箭的扫码入口扫描；也可以把链接安全传给自己的 iPhone，复制后使用小火箭的剪贴板导入入口。选择导入的节点、开启连接并允许 iOS 添加 VPN 配置，再测试实际出口。
+
+脚本仅支持本项目的 VLESS + REALITY + TCP 节点。链接字段依据 [Xray VLESS 分享链接提案](https://github.com/XTLS/Xray-core/discussions/716)，映射地址、端口、UUID、SNI、指纹、公钥、short ID 和 Vision flow。**仅导出节点，不包含 Mihomo 分流规则、DNS、TUN 设置**；这些需在小火箭内单独设置。链接和二维码都含节点凭据，不要公开或上传在线二维码工具。
+
+`support-x25519mlkem768` 是 Mihomo 配置项，脚本不会把它作为未经确认的小火箭链接参数。请使用支持所需 REALITY 握手的小火箭版本；导入成功并不代表握手成功。如果电脑可用但手机认证失败，检查小火箭版本及握手兼容性，并结合服务端日志排查（见 Q3）。
+
 ## 4. 验证是否正常工作
 
 服务器：
