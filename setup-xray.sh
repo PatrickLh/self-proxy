@@ -144,6 +144,16 @@ tun:
     - tcp://any:53
   route-exclude-address:
     - {q(str(server_ip) + ('/32' if server_ip.version == 4 else '/128'))}
+# Maintained China domain list; download via the working VPS node.
+rule-providers:
+  cn-domain:
+    type: http
+    behavior: domain
+    format: yaml
+    url: https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/meta/geo/geosite/cn.yaml
+    path: ./ruleset/cn-domain.yaml
+    interval: 86400
+    proxy: PROXY
 rules:
   - DOMAIN,localhost,DIRECT
   - DOMAIN-SUFFIX,local,DIRECT
@@ -170,6 +180,7 @@ rules:
   - DOMAIN-SUFFIX,alipay.com,DIRECT
   - DOMAIN-SUFFIX,jd.com,DIRECT
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
+  - RULE-SET,cn-domain,DIRECT
   - MATCH,PROXY
 '''
 (p / 'client.yaml').write_text(client)

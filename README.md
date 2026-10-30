@@ -84,12 +84,16 @@ scp user@你的服务器公网IP:~/client.yaml ./client.yaml
 - TUN 正常工作后可以关闭系统代理；同时启用并非必然冲突，按实际应用测试。
 - 浏览器独立的安全 DNS、其他 VPN、虚拟机和容器网络可能影响接管效果。TUN 不等于绝对无泄露，也不保证代理停止后自动断网。
 
-生成配置不使用远程 rule-provider 或 GEOSITE/GEOIP 数据库，避免失效链接和首次下载依赖。分流行为是：
+客户端使用 [MetaCubeX 国内域名规则集](https://github.com/MetaCubeX/meta-rules-dat)，通过 `rule-providers.cn-domain` 每 86400 秒更新，下载经 PROXY，缓存于 Mihomo 数据目录的 `./ruleset/cn-domain.yaml`。首次加载需能通过 VPS 下载 GitHub Raw 文件；下载失败时检查内核日志和规则集面板。已有缓存可供后续加载，首次下载前不应假定完整国内分流已生效。
+
+分流按顺序匹配：
 
 - 回环、常见私网地址以及 `.local`、`.lan` 直连。
-- 常见 AI 域名显式走 PROXY。
-- `.cn` 及列出的百度、腾讯、淘宝、天猫、支付宝、京东、哔哩哔哩域名直连。
-- **其余全部走 PROXY**，包括 GitHub 和 Docker 等服务。此配置不是覆盖所有国内网站的地理分流，未列出的国内网站也会消耗 VPS 流量。需要其他直连域名时，在 `MATCH,PROXY` 之前追加 `DOMAIN-SUFFIX,域名,DIRECT`。
+- 常见 AI 域名显式走 PROXY，优先于国内规则集。
+- 阿里云、飞书、字节等国内站点统一由国内域名规则集匹配，不重复添加单独规则；`.cn` 及原有国内域名规则继续直连。
+- 国内域名规则集命中后 DIRECT；其余全部 PROXY，包括未被前述规则命中的 GitHub、Google 等服务。
+
+此方案按域名分流，不添加国内 IP 兜底，避免把使用国内 CDN 的海外站点仅凭 IP 判为直连。规则集较手写列表覆盖更广，但并不保证涵盖所有国内站点；漏网域名可继续手动补充。Clash Verge Rev 需选择 Rule 模式、重新加载当前 Local 配置，并确认规则集下载成功；连接面板可查看实际命中的规则及 DIRECT/PROXY。
 
 DNS 使用 fake-ip。`dns.direct-nameserver` 为直连出口解析域名，使用 `223.5.5.5#DIRECT` 和 `119.29.29.29#DIRECT`，使直连网站的解析不依赖 VPS。默认 `dns.nameserver` 使用带 `#PROXY` 的 Cloudflare/Google DoH，通过 VPS 查询。`default-nameserver` 用于解析 DNS 服务器自身的域名，不是直连网站的通用备用 DNS。当前无需额外配置 `nameserver-policy`；需要为特定域名指定解析器时再添加。
 
