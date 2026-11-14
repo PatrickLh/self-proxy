@@ -134,7 +134,12 @@ python3 export-shadowrocket.py client.yaml --qr shadowrocket.png
 
 `support-x25519mlkem768` 是 Mihomo 配置项，脚本不会把它作为未经确认的小火箭链接参数。请使用支持所需 REALITY 握手的小火箭版本；导入成功并不代表握手成功。如果电脑可用但手机认证失败，检查小火箭版本及握手兼容性，并结合服务端日志排查（见 Q3）。
 
+已在本次部署中验证：将旧版 Shadowrocket 更新后，同一个 REALITY 节点恢复连接，无需重生成密钥或分享链接。
+
 ## 4. 验证是否正常工作
+
+部署脚本在 Xray 启动后检查内核是否支持 BBR。支持时应用 `fq` 和 `bbr`，并写入 `/etc/sysctl.d/99-xray-bbr.conf` 持久化。若其他 sysctl 配置也设置了这两项，请检查是否覆盖。脚本随后从 VPS 直连 `https://fast.com/`，返回 HTTP 状态、TLS 就绪时间和请求总耗时。失败仅提示，不中断部署。此检查只验证网页的 HTTPS 连通性；[Fast.com 的带宽测试](https://fast.com/)还需要执行额外的上传和下载。
+
 
 服务器：
 
@@ -259,7 +264,7 @@ REALITY: processed invalid connection ... authentication failed or validation cr
 
 先核对两端实际运行配置的公私钥对应关系、short ID、SNI、UUID、端口及系统时间。如果这些均正确，还需要检查 Mihomo 与新版 Xray 的 REALITY 握手兼容性。
 
-本项目实际排查中，**Xray 26.10.21 + Mihomo v1.19.32** 在服务端设置 `minClientVer` 后仍认证失败；保留该设置，并在客户端开启 `support-x25519mlkem768` 后连接成功。当前脚本会同时生成以下两项：
+本项目实际排查中，**Xray 26.10.21 + Mihomo v1.19.32** 在服务端设置 `minClientVer` 后仍认证失败；保留该设置，并在客户端开启 `support-x25519mlkem768` 后连接成功。当时测试的配置如下；当前脚本仅保留客户端的密钥交换选项：
 
 - 服务端 `config.json`：在 `inbounds[].streamSettings.realitySettings` 下设置 `"minClientVer": "1.8.2"`。Mihomo v1.19.32 的 REALITY 握手版本标识为 `1.8.2`，与其发布版本号不同；此设置调整版本门槛，仍保留密钥和 short ID 校验。
 - 客户端 `client.yaml`：在 VPS 节点的 `reality-opts` 下设置 `support-x25519mlkem768: true`，启用 X25519-MLKEM768 密钥交换，并保留 `client-fingerprint: chrome`。

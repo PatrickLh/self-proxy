@@ -31,11 +31,11 @@ done
 PORT=$((10#$PORT))
 ((PORT >= 1 && PORT <= 65535)) || die "Invalid port"
 [[ $SNI =~ ^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ && $SNI == *.* ]] || die "Invalid SNI hostname"
-[[ ! -e $INSTALL_DIR ]] || die "$INSTALL_DIR already exists; refusing to replace credentials. See test.md."
+[[ ! -e $INSTALL_DIR ]] || die "$INSTALL_DIR already exists; refusing to replace credentials. See the recovery section in README.md."
 command -v apt-get >/dev/null || die "Only Debian/Ubuntu with apt-get are supported."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y ca-certificates curl openssl python3 iproute2
+apt-get install -y ca-certificates curl openssl python3 iproute2 procps
 python3 - "$SERVER_IP" <<'PY'
 import ipaddress, sys
 ip = ipaddress.ip_address(sys.argv[1])
@@ -63,8 +63,10 @@ PUBLIC_KEY=$(printf '%s\n' "$KEYS" | awk -F ': *' 'tolower($1) ~ /^(public[ ]*ke
 UUID=$(cat /proc/sys/kernel/random/uuid)
 SHORT_ID=$(openssl rand -hex 8)
 # Check the camouflage destination from the VPS before installing.
-curl --fail --silent --show-error --connect-timeout 10 --max-time 20 \
-  --tlsv1.3 --tls-max 1.3 --http2 "https://$SNI/" -o /dev/null
+SNI_HTTP_VERSION=$(curl --noproxy '*' --fail --silent --show-error --connect-timeout 10 --max-time 20 \
+  --tlsv1.3 --tls-max 1.3 --http2 "https://$SNI/" -o /dev/null -w '%{http_version}') \
+  || die "Cannot reach REALITY target $SNI over TLS 1.3"
+[[ $SNI_HTTP_VERSION == 2 ]] || die "REALITY target $SNI did not negotiate HTTP/2"
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 export PORT SNI SERVER_IP PRIVATE_KEY PUBLIC_KEY UUID SHORT_ID PINNED_IMAGE STAGE
@@ -79,8 +81,7 @@ server = {
         'port': int(e['PORT']), 'protocol': 'vless',
         'settings': {'clients': [{'id': e['UUID'], 'flow': 'xtls-rprx-vision'}], 'decryption': 'none'},
         'streamSettings': {'network': 'raw', 'security': 'reality', 'realitySettings': {
-            # Mihomo sends REALITY client version 1.8.2 independently of its release version.
-            'show': False, 'minClientVer': '1.8.2',
+            'show': False,
             'target': e['SNI'] + ':443', 'serverNames': [e['SNI']],
             'privateKey': e['PRIVATE_KEY'], 'shortIds': [e['SHORT_ID']]}}}],
     'outbounds': [{'protocol': 'freedom'}]}
@@ -209,5 +210,33 @@ if command -v firewall-cmd >/dev/null && firewall-cmd --state >/dev/null 2>&1; t
   firewall-cmd --permanent --add-port="$PORT/tcp"
   firewall-cmd --add-port="$PORT/tcp"
 fi
+# BBR may be built in or provided as a kernel module.
+if command -v modprobe >/dev/null; then
+  modprobe tcp_bbr 2>/dev/null || true
+fi
+if sysctl -n net.ipv4.tcp_available_congestion_control | grep -qw bbr; then
+  if sysctl -w net.core.default_qdisc=fq net.ipv4.tcp_congestion_control=bbr; then
+    if ! cat > /etc/sysctl.d/99-xray-bbr.conf <<'EOF'
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+EOF
+    then
+      echo 'Warning: fq/BBR applied but could not persist sysctl settings.' >&2
+    fi
+  else
+    echo 'Warning: could not apply fq/BBR; the VPS may restrict sysctl writes.' >&2
+  fi
+else
+  echo 'Warning: BBR unavailable on this VPS; skipping tuning.' >&2
+fi
+
+echo 'Checking outbound HTTPS to fast.com from the VPS...'
+if ! curl --noproxy '*' --fail --silent --show-error --location \
+  --connect-timeout 10 --max-time 20 --output /dev/null \
+  --write-out 'Fast.com: HTTP %{http_code}, TLS ready in %{time_appconnect}s, total %{time_total}s\n' \
+  https://fast.com/; then
+  echo 'Warning: VPS HTTPS check to fast.com failed; Xray installation is still complete.' >&2
+fi
+
 printf '\nXray is listening on TCP %s.\nClient profile: %s/client.yaml\nImage lock: %s/image.txt\n' "$PORT" "$INSTALL_DIR" "$INSTALL_DIR"
 echo 'Allow this TCP port in the cloud security group. Download client.yaml securely; do not publish it.'
